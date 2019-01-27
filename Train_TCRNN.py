@@ -8,9 +8,6 @@
 @version: 1.0
 @desc  : 
 """
-from torchvision import transforms
-
-from CRNN_transformer.config.convert_para import convert_parameters
 
 '''
 训练transformer-CRNN模型
@@ -21,18 +18,22 @@ import itertools
 import math
 import random
 import time
+
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
-import CRNN_transformer.transformer.Constants as Constants
-from CRNN_transformer.dataset import TranslationDataset, paired_collate_fn
 from torch.utils.data import BatchSampler, SequentialSampler
+from torchvision import transforms
 from tqdm import tqdm
-from CRNN_transformer.transformer.Models import CRNN_Transformer
-from CRNN_transformer.transformer.Optim import ScheduledOptim
-from CRNN_transformer.crnn_utils.data_augmentation import CRNNAugmentor, AugmentationConfig
-from CRNN_transformer.crnn_utils.draw_image import inference
+
+import transformer.Constants as Constants
+from config.convert_para import convert_parameters
+from crnn_utils.data_augmentation import CRNNAugmentor, AugmentationConfig
+from crnn_utils.draw_image import inference
+from dataset import TranslationDataset, paired_collate_fn
+from transformer.Models import CRNN_Transformer
+from transformer.Optim import ScheduledOptim
 
 
 def generate_augment():
@@ -364,7 +365,7 @@ def main():
     if opt.embs_share_weight:
         assert training_data.dataset.src_word2idx == training_data.dataset.tgt_word2idx, \
             'The src/tgt word2idx table are different but asked to share word embedding.'
-    with open(opt.log+'parameters', 'w') as f:
+    with open(opt.log + 'parameters', 'w') as f:
         f.write(str(opt))
     print(opt)
 
