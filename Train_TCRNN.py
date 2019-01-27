@@ -10,6 +10,8 @@
 """
 from torchvision import transforms
 
+from CRNN_transformer.config.convert_para import convert_parameters
+
 '''
 训练transformer-CRNN模型
 '''
@@ -244,10 +246,10 @@ def train(model, training_data, validation_data, optimizer, device, opt, idx2wor
 
         if opt.save_model:
             if opt.save_mode == 'all':
-                model_name = opt.save_model + '_accu_{accu:3.3f}.chkpt'.format(accu=100 * valid_accu)
+                model_name = opt.log + opt.save_model + '_accu_{accu:3.3f}.chkpt'.format(accu=100 * valid_accu)
                 torch.save(checkpoint, model_name)
             elif opt.save_mode == 'best':
-                model_name = opt.save_model + '.chkpt'
+                model_name = opt.log + opt.save_model + '.chkpt'
                 if valid_accu >= max(valid_accus):
                     torch.save(checkpoint, model_name)
                     print('    - [Info] The checkpoint file has been updated.')
@@ -337,16 +339,13 @@ def main():
     parser.add_argument('-no_cuda', action='store_true')
     parser.add_argument('-label_smoothing', action='store_true')
 
+    # ========= Loading Config=========#
+    config = True
     opt = parser.parse_args()
+    if config:
+        opt = convert_parameters(opt)
     opt.cuda = not opt.no_cuda
     opt.d_word_vec = opt.d_model
-
-    debug = False
-    if debug:
-        opt.batch_size = 2
-        opt.dropout = 0
-        opt.epoch = 300
-        opt.log = '/home/sunzijun/data/CRNN_trans'
 
     # ========= Loading Dataset =========#
     data = torch.load(opt.data)
@@ -365,8 +364,10 @@ def main():
     if opt.embs_share_weight:
         assert training_data.dataset.src_word2idx == training_data.dataset.tgt_word2idx, \
             'The src/tgt word2idx table are different but asked to share word embedding.'
-
+    with open(opt.log+'parameters', 'w') as f:
+        f.write(str(opt))
     print(opt)
+
     device_ids = [1, 3]
     device = torch.device('cuda', device_ids[0])
 
