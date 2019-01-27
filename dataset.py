@@ -6,15 +6,21 @@ from transformer import Constants
 
 
 def paired_collate_fn(insts):
-    src_insts, tgt_insts = list(zip(*insts))
+    src_insts, tgt_insts, tgt_texts = list(zip(*insts))
     src_insts = collate_fn(src_insts)
     tgt_insts = collate_fn(tgt_insts)
-    return (*src_insts, *tgt_insts)
+    return (*src_insts, *tgt_insts), tgt_texts
+
+
+def single_collate_fn(insts):
+    src_insts, tgt_texts = list(zip(*insts))
+    src_insts = collate_fn(src_insts)
+    return (*src_insts, tgt_texts)
 
 
 def collate_fn(insts):
     ''' Pad the instance to the max seq length in batch '''
-
+    # insts, tgt_texts = list(zip(*insts))
     max_len = max(len(inst) for inst in insts)
 
     batch_seq = np.array([
@@ -32,7 +38,7 @@ def collate_fn(insts):
 
 
 class TranslationDataset(torch.utils.data.Dataset):
-    def __init__(self, src_word2idx, tgt_word2idx, src_insts=None, tgt_insts=None, images=None):
+    def __init__(self, src_word2idx, tgt_word2idx, src_insts=None, tgt_insts=None, tgt_texts=None, images=None):
         assert src_insts
         assert not tgt_insts or (len(src_insts) == len(tgt_insts))
 
@@ -45,6 +51,7 @@ class TranslationDataset(torch.utils.data.Dataset):
         self._tgt_word2idx = tgt_word2idx
         self._tgt_idx2word = tgt_idx2word
         self._tgt_insts = tgt_insts
+        self._tgt_texts = tgt_texts
         self._images = images
 
     @property
@@ -95,5 +102,5 @@ class TranslationDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         if self._tgt_insts:
-            return self._src_insts[idx], self._tgt_insts[idx]
-        return self._src_insts[idx]
+            return self._src_insts[idx], self._tgt_insts[idx], self._tgt_texts[idx]
+        return self._src_insts[idx], self._tgt_texts[idx]

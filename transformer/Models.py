@@ -2,8 +2,8 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import CRNN_transformer.transformer.Constants as Constants
-from CRNN_transformer.transformer.Layers import EncoderLayer, DecoderLayer, CNNLayer
+import transformer.Constants as Constants
+from transformer.Layers import EncoderLayer, DecoderLayer, CNNLayer
 
 __author__ = "Yu-Hsiang Huang"
 
@@ -23,7 +23,8 @@ def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):
     def get_posi_angle_vec(position):
         return [cal_angle(position, hid_j) for hid_j in range(d_hid)]
 
-    sinusoid_table = np.array([get_posi_angle_vec(pos_i) for pos_i in range(n_position)])
+    sinusoid_table = np.array([get_posi_angle_vec(pos_i)
+                               for pos_i in range(n_position)])
 
     sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
     sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
@@ -41,7 +42,8 @@ def get_attn_key_pad_mask(seq_k, seq_q):
     # 初始化self attention矩阵
     len_q = seq_q.size(1)
     padding_mask = seq_k.eq(Constants.PAD)
-    padding_mask = padding_mask.unsqueeze(1).expand(-1, len_q, -1)  # b x lq x lk
+    padding_mask = padding_mask.unsqueeze(
+        1).expand(-1, len_q, -1)  # b x lq x lk
 
     return padding_mask
 
@@ -52,7 +54,8 @@ def get_subsequent_mask(seq):
     sz_b, len_s = seq.size()
     subsequent_mask = torch.triu(
         torch.ones((len_s, len_s), device=seq.device, dtype=torch.uint8), diagonal=1)
-    subsequent_mask = subsequent_mask.unsqueeze(0).expand(sz_b, -1, -1)  # b x ls x ls
+    subsequent_mask = subsequent_mask.unsqueeze(
+        0).expand(sz_b, -1, -1)  # b x ls x ls
 
     return subsequent_mask
 
@@ -88,7 +91,8 @@ class Decoder(nn.Module):
         non_pad_mask = get_non_pad_mask(tgt_seq)
         # self attention mask
         slf_attn_mask_subseq = get_subsequent_mask(tgt_seq)
-        slf_attn_mask_keypad = get_attn_key_pad_mask(seq_k=tgt_seq, seq_q=tgt_seq)
+        slf_attn_mask_keypad = get_attn_key_pad_mask(
+            seq_k=tgt_seq, seq_q=tgt_seq)
         slf_attn_mask = (slf_attn_mask_keypad + slf_attn_mask_subseq).gt(0)
         # encoder decoder attention mask
         src_seq = torch.cat([image_padding, src_seq], 1)
@@ -230,7 +234,9 @@ class CRNN_Transformer(nn.Module):
         tgt_seq, tgt_pos = tgt_seq[:, :-1], tgt_pos[:, :-1]
 
         enc_output, *_ = self.encoder(src_seq, src_pos, image, image_padding)
-        dec_output, *_ = self.decoder(tgt_seq, tgt_pos, src_seq, enc_output, image_padding)
+        dec_output, * \
+            _ = self.decoder(tgt_seq, tgt_pos, src_seq,
+                             enc_output, image_padding)
         seq_logit = self.tgt_word_prj(dec_output) * self.x_logit_scale
 
         return seq_logit.view(-1, seq_logit.size(2))

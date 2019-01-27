@@ -6,7 +6,7 @@
 @contact : stefan_sun_cn@hotmail.com
 @date  : 2018/12/31 14:33
 @version: 1.0
-@desc  : 
+@desc  :
 """
 from torchvision import transforms
 
@@ -23,36 +23,47 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
-import CRNN_transformer.transformer.Constants as Constants
-from CRNN_transformer.dataset import TranslationDataset, paired_collate_fn
+import transformer.Constants as Constants
+from dataset import TranslationDataset, paired_collate_fn
 from torch.utils.data import BatchSampler, SequentialSampler
 from tqdm import tqdm
-from CRNN_transformer.transformer.Models import CRNN_Transformer
-from CRNN_transformer.transformer.Optim import ScheduledOptim
-from CRNN_transformer.crnn_utils.data_augmentation import CRNNAugmentor, AugmentationConfig
-from CRNN_transformer.crnn_utils.draw_image import inference
+from transformer.Models import CRNN_Transformer
+from transformer.Optim import ScheduledOptim
+from crnn_utils.data_augmentation import CRNNAugmentor, AugmentationConfig
+from crnn_utils.draw_image import inference
 
 
 def generate_augment():
     """生成augment"""
     augmentation_config = AugmentationConfig()
     # augmentation_config.rotate_image_params = {'max_angel': 0}  # no rotation!
-    augmentation_config.add_table_lines_params = {'add_line_prob': 0.7, 'max_line_thickness': 4}
+    augmentation_config.add_table_lines_params = {
+        'add_line_prob': 0.7, 'max_line_thickness': 4}
     augmentation_config.rotate_image_params = {'max_angel': 3}
     augmentation_config.affine_transform_shear_params = {'a': 3}
-    augmentation_config.affine_transform_change_aspect_ratio_params = {'ratio': 0.9}
+    augmentation_config.affine_transform_change_aspect_ratio_params = {
+        'ratio': 0.9}
     augmentation_config.brighten_image_params = {'min_alpha': 0.6}
     augmentation_config.darken_image_params = {'min_alpha': 0.6}
     augmentation_config.add_color_filter_params = {'min_alpha': 0.6}
-    augmentation_config.add_random_noise_params = {'min_masks': 70, 'max_masks': 90}
-    augmentation_config.add_color_font_effect_params = {'beta': 0.6, 'max_num_lines': 90}
-    augmentation_config.add_erode_edge_effect_params = {'kernel_size': (3, 3), 'max_sigmaX': 5}
-    augmentation_config.add_resize_blur_effect_params = {'resize_ratio_range': (0.9, 1)}
-    augmentation_config.add_gaussian_blur_effect_params = {'kernel_size': (3, 3), 'max_sigmaX': 5}
-    augmentation_config.add_horizontal_motion_blur_effect_params = {'min_kernel_size': 5, 'max_kernel_size': 8}
-    augmentation_config.add_vertical_motion_blur_effect_params = {'min_kernel_size': 5, 'max_kernel_size': 8}
-    augmentation_config.add_random_circles_params = {'min_alpha': 0.6, 'max_num_circles': 25}
-    augmentation_config.add_random_lines_params = {'min_alpha': 0.6, 'max_num_lines': 25}
+    augmentation_config.add_random_noise_params = {
+        'min_masks': 70, 'max_masks': 90}
+    augmentation_config.add_color_font_effect_params = {
+        'beta': 0.6, 'max_num_lines': 90}
+    augmentation_config.add_erode_edge_effect_params = {
+        'kernel_size': (3, 3), 'max_sigmaX': 5}
+    augmentation_config.add_resize_blur_effect_params = {
+        'resize_ratio_range': (0.9, 1)}
+    augmentation_config.add_gaussian_blur_effect_params = {
+        'kernel_size': (3, 3), 'max_sigmaX': 5}
+    augmentation_config.add_horizontal_motion_blur_effect_params = {
+        'min_kernel_size': 5, 'max_kernel_size': 8}
+    augmentation_config.add_vertical_motion_blur_effect_params = {
+        'min_kernel_size': 5, 'max_kernel_size': 8}
+    augmentation_config.add_random_circles_params = {
+        'min_alpha': 0.6, 'max_num_circles': 25}
+    augmentation_config.add_random_lines_params = {
+        'min_alpha': 0.6, 'max_num_lines': 25}
 
     # augmentation (make the image look blurry)
     data_augmentor = CRNNAugmentor(augmentation_config)
@@ -89,7 +100,8 @@ def cal_loss(pred, gold, smoothing):
         loss = -(one_hot * log_prb).sum(dim=1)
         loss = loss.masked_select(non_pad_mask).sum()  # average later
     else:
-        loss = F.cross_entropy(pred, gold, ignore_index=Constants.PAD, reduction='sum')
+        loss = F.cross_entropy(
+            pred, gold, ignore_index=Constants.PAD, reduction='sum')
 
     return loss
 
@@ -106,28 +118,27 @@ def train_epoch(model, training_data, optimizer, device, idx2word, smoothing):
 
     for batch in tqdm(training_data, mininterval=2, desc='  - (Training)   ', leave=False):
         # prepare data
-        src_seq, src_pos, tgt_seq, tgt_pos = map(lambda x: x.to(device), batch)
+
+        insts, tgt_texts = batch
+
+        src_seq, src_pos, tgt_seq, tgt_pos = map(lambda x: x.to(device), insts)
         gold = tgt_seq[:, 1:]
+
         # 根据tgt_seq生成图片
-        text = []
-        for i in range(tgt_seq.size(0)):
-            text_seq = tgt_seq[i]
-            text.append("".join([idx2word[idx] for idx in text_seq.tolist()[1:-1]]))
 
-        image = inference(text[0], '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)
-        image_all = loader(image).unsqueeze(0)
+        images = [loader(inference(sent, '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)).unsqueeze(0)
+                  for sent in tgt_texts]
+        # print('images', images)
 
-        for i in range(1, src_seq.size(0)):
-            image = inference(text[i], '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)
-            image = loader(image).unsqueeze(0)
-            image_all = torch.cat((image_all, image), 0)
+        image_all = torch.cat(images, 0)
 
-        image_all = image_all.to(device)  # iamge tensor
-        image_padding = torch.ones(src_seq.size(0), 76).type(torch.long).to(device)  # image padding
+        image_padding = torch.ones(src_seq.size(0), 76).type(
+            torch.long).to(device)  # image padding
 
         # forward
         optimizer.zero_grad()
-        pred = model(src_seq, src_pos, tgt_seq, tgt_pos, image_all, image_padding)
+        pred = model(src_seq, src_pos, tgt_seq,
+                     tgt_pos, image_all, image_padding)
 
         # backward
         loss, n_correct = cal_performance(pred, gold, smoothing=smoothing)
@@ -162,27 +173,26 @@ def eval_epoch(model, validation_data, device, idx2word):
     with torch.no_grad():
         for batch in tqdm(validation_data, mininterval=2, desc='  - (Validation) ', leave=False):
             # prepare data
-            src_seq, src_pos, tgt_seq, tgt_pos = map(lambda x: x.to(device), batch)
+
+            insts, tgt_texts = batch
+
+            src_seq, src_pos, tgt_seq, tgt_pos = map(
+                lambda x: x.to(device), insts)
             gold = tgt_seq[:, 1:]
+
             # 根据tgt_seq生成图片
-            text = []
-            for i in range(tgt_seq.size(0)):
-                text_seq = tgt_seq[i]
-                text.append("".join([idx2word[idx] for idx in text_seq.tolist()[1:-1]]))
 
-            image = inference(text[0], '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)
-            image_all = loader(image).unsqueeze(0)
+            images = [loader(inference(sent, '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)).unsqueeze(0)
+                      for sent in tgt_texts]
 
-            for i in range(1, src_seq.size(0)):
-                image = inference(text[i], '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)
-                image = loader(image).unsqueeze(0)
-                image_all = torch.cat((image_all, image), 0)
+            image_all = torch.cat(images, 0)
 
-            image_all = image_all.to(device)  # iamge tensor
-            image_padding = torch.ones(src_seq.size(0), 76).type(torch.long).to(device)  # image padding
+            image_padding = torch.ones(src_seq.size(0), 76).type(
+                torch.long).to(device)  # image padding
 
             # forward
-            pred = model(src_seq, src_pos, tgt_seq, tgt_pos, image_all, image_padding)
+            pred = model(src_seq, src_pos, tgt_seq,
+                         tgt_pos, image_all, image_padding)
             loss, n_correct = cal_performance(pred, gold, smoothing=False)
 
             # note keeping
@@ -222,17 +232,18 @@ def train(model, training_data, validation_data, optimizer, device, opt, idx2wor
         start = time.time()
         train_loss, train_accu = train_epoch(
             model, training_data, optimizer, device, idx2word, smoothing=opt.label_smoothing)
-        print('  - (Training)   ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, ' \
+        print('  - (Training)   ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, '
               'elapse: {elapse:3.3f} min'.format(
-            ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu,
-            elapse=(time.time() - start) / 60))
+                  ppl=math.exp(min(train_loss, 100)), accu=100 * train_accu,
+                  elapse=(time.time() - start) / 60))
 
         start = time.time()
-        valid_loss, valid_accu = eval_epoch(model, validation_data, device, idx2word)
-        print('  - (Validation) ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, ' \
+        valid_loss, valid_accu = eval_epoch(
+            model, validation_data, device, idx2word)
+        print('  - (Validation) ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, '
               'elapse: {elapse:3.3f} min'.format(
-            ppl=math.exp(min(valid_loss, 100)), accu=100 * valid_accu,
-            elapse=(time.time() - start) / 60))
+                  ppl=math.exp(min(valid_loss, 100)), accu=100 * valid_accu,
+                  elapse=(time.time() - start) / 60))
 
         valid_accus += [valid_accu]
 
@@ -244,7 +255,8 @@ def train(model, training_data, validation_data, optimizer, device, opt, idx2wor
 
         if opt.save_model:
             if opt.save_mode == 'all':
-                model_name = opt.save_model + '_accu_{accu:3.3f}.chkpt'.format(accu=100 * valid_accu)
+                model_name = opt.save_model + \
+                    '_accu_{accu:3.3f}.chkpt'.format(accu=100 * valid_accu)
                 torch.save(checkpoint, model_name)
             elif opt.save_mode == 'best':
                 model_name = opt.save_model + '.chkpt'
@@ -262,6 +274,33 @@ def train(model, training_data, validation_data, optimizer, device, opt, idx2wor
                     ppl=math.exp(min(valid_loss, 100)), accu=100 * valid_accu))
 
 
+def my_prepare_dataloaders(data, opt):
+    # ========= Preparing DataLoader =========#
+
+    train_loader = torch.utils.data.DataLoader(
+        TranslationDataset(
+            src_word2idx=data['dict']['src'],
+            tgt_word2idx=data['dict']['tgt'],
+            src_insts=data['train']['src'],
+            tgt_insts=data['train']['tgt'],
+            tgt_texts=data['train']['tgt_text']),
+        num_workers=2,
+        batch_size=opt.batch_size,
+        collate_fn=paired_collate_fn)
+
+    valid_loader = torch.utils.data.DataLoader(
+        TranslationDataset(
+            src_word2idx=data['dict']['src'],
+            tgt_word2idx=data['dict']['tgt'],
+            src_insts=data['valid']['src'],
+            tgt_insts=data['valid']['tgt'],
+            tgt_texts=data['valid']['tgt_text']),
+        num_workers=2,
+        batch_size=opt.batch_size,
+        collate_fn=paired_collate_fn)
+    return train_loader, valid_loader
+
+
 def prepare_dataloaders(data, opt):
     # 将数据进行处理
     print("整合数据...")
@@ -270,7 +309,8 @@ def prepare_dataloaders(data, opt):
     all_data = list(zip(src_pre, tgt_pre))
 
     print("sample 数据...")
-    sampler = BatchSampler(SequentialSampler(all_data), batch_size=opt.batch_size, drop_last=False)
+    sampler = BatchSampler(SequentialSampler(all_data),
+                           batch_size=opt.batch_size, drop_last=False)
     index = [s for s in sampler]
     random.shuffle(index)
     index = list(itertools.chain.from_iterable(index))
@@ -311,8 +351,10 @@ def main():
     ''' Main function '''
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-data', default='/data/nfsdata/data/sunzijun/transformer/burry4/data.pt')
-
+    # parser.add_argument(
+    #     '-data', default='/data/nfsdata/data/sunzijun/transformer/burry4/data.pt')
+    parser.add_argument(
+        '-data', default='./mini_data.pt')
     parser.add_argument('-epoch', type=int, default=10)
     parser.add_argument('-batch_size', type=int, default=64)
 
@@ -330,9 +372,10 @@ def main():
     parser.add_argument('-embs_share_weight', action='store_true')
     parser.add_argument('-proj_share_weight', action='store_true')
 
-    parser.add_argument('-log', default='/home/sunzijun/data/')
+    parser.add_argument('-log', default=None)
     parser.add_argument('-save_model', default='trained')
-    parser.add_argument('-save_mode', type=str, choices=['all', 'best'], default='all')
+    parser.add_argument('-save_mode', type=str,
+                        choices=['all', 'best'], default='all')
 
     parser.add_argument('-no_cuda', action='store_true')
     parser.add_argument('-label_smoothing', action='store_true')
@@ -352,7 +395,7 @@ def main():
     data = torch.load(opt.data)
     opt.max_token_seq_len = data['settings'].max_token_seq_len
 
-    training_data, validation_data = prepare_dataloaders(data, opt)
+    training_data, validation_data = my_prepare_dataloaders(data, opt)
 
     opt.src_vocab_size = training_data.dataset.src_vocab_size
     opt.tgt_vocab_size = training_data.dataset.tgt_vocab_size
@@ -386,7 +429,8 @@ def main():
         dropout=opt.dropout)
 
     transformer = transformer.cuda(device_ids[0])  # 模型载入cuda device 0
-    transformer = torch.nn.DataParallel(transformer, device_ids=device_ids)  # dataParallel重新包装
+    transformer = torch.nn.DataParallel(
+        transformer, device_ids=device_ids)  # dataParallel重新包装
 
     optimizer = ScheduledOptim(
         optim.Adam(
@@ -394,7 +438,8 @@ def main():
             betas=(0.9, 0.98), eps=1e-09),
         opt.d_model, opt.n_warmup_steps)
 
-    train(transformer, training_data, validation_data, optimizer, device, opt, idx2word)
+    train(transformer, training_data, validation_data,
+          optimizer, device, opt, idx2word)
 
 
 if __name__ == '__main__':
