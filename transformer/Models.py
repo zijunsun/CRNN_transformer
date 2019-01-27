@@ -2,8 +2,8 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import transformer.Constants as Constants
-from transformer.Layers import EncoderLayer, DecoderLayer, CNNLayer
+import CRNN_transformer.transformer.Constants as Constants
+from CRNN_transformer.transformer.Layers import EncoderLayer, DecoderLayer, CNNLayer
 
 __author__ = "Yu-Hsiang Huang"
 
@@ -57,54 +57,6 @@ def get_subsequent_mask(seq):
     return subsequent_mask
 
 
-class Encoder(nn.Module):
-    ''' A encoder model with self attention mechanism. '''
-
-    def __init__(
-            self,
-            n_src_vocab, len_max_seq, d_word_vec,
-            n_layers, n_head, d_k, d_v,
-            d_model, d_inner, dropout=0.1):
-
-        super().__init__()
-
-        n_position = len_max_seq + 1
-
-        self.src_word_emb = nn.Embedding(
-            n_src_vocab, d_word_vec, padding_idx=Constants.PAD)
-
-        self.position_enc = nn.Embedding.from_pretrained(
-            get_sinusoid_encoding_table(n_position, d_word_vec, padding_idx=0),
-            freeze=True)
-
-        self.layer_stack = nn.ModuleList([
-            EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
-            for _ in range(n_layers)])
-
-    def forward(self, src_seq, src_pos, return_attns=False):
-
-        enc_slf_attn_list = []
-
-        # -- Prepare masks
-        slf_attn_mask = get_attn_key_pad_mask(seq_k=src_seq, seq_q=src_seq)
-        non_pad_mask = get_non_pad_mask(src_seq)
-
-        # -- Forward
-        enc_output = self.src_word_emb(src_seq) + self.position_enc(src_pos)
-
-        for enc_layer in self.layer_stack:
-            enc_output, enc_slf_attn = enc_layer(
-                enc_output,
-                non_pad_mask=non_pad_mask,
-                slf_attn_mask=slf_attn_mask)
-            if return_attns:
-                enc_slf_attn_list += [enc_slf_attn]
-
-        if return_attns:
-            return enc_output, enc_slf_attn_list
-        return enc_output
-
-
 class Decoder(nn.Module):
     ''' A decoder model with self attention mechanism. '''
 
@@ -128,7 +80,7 @@ class Decoder(nn.Module):
             DecoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
             for _ in range(n_layers)])
 
-    def forward(self, tgt_seq, tgt_pos, src_seq, enc_output, return_attns=False):
+    def forward(self, tgt_seq, tgt_pos, src_seq, enc_output, image_padding, return_attns=False):
 
         dec_slf_attn_list, dec_enc_attn_list = [], []
 
@@ -139,8 +91,6 @@ class Decoder(nn.Module):
         slf_attn_mask_keypad = get_attn_key_pad_mask(seq_k=tgt_seq, seq_q=tgt_seq)
         slf_attn_mask = (slf_attn_mask_keypad + slf_attn_mask_subseq).gt(0)
         # encoder decoder attention mask
-        len_bs = src_seq.size(0)
-        image_padding = torch.ones(len_bs, 76).type(torch.long).cuda(0)  # padding到src_seq上
         src_seq = torch.cat([image_padding, src_seq], 1)
         dec_enc_attn_mask = get_attn_key_pad_mask(seq_k=src_seq, seq_q=tgt_seq)
 
@@ -190,13 +140,19 @@ class CRNN_Encoder(nn.Module):
             EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
             for _ in range(n_layers)])
 
-    def forward(self, src_seq, src_pos, image, return_attns=False):
+    def forward(self, src_seq, src_pos, image, image_padding, return_attns=False):
+        """
 
+        :param src_seq: 原句子
+        :param src_pos: 原句子位置
+        :param image: 图像tensor
+        :param image_padding: 图像padding
+        :param return_attns: 是否返回attention矩阵
+        :return:
+        """
         enc_slf_attn_list = []
 
         # -- Prepare masks
-        len_bs = src_seq.size(0)  # 获取batch size
-        image_padding = torch.ones(len_bs, 76).type(torch.long).cuda(0)  # padding到src_seq上
         seq_k = torch.cat([image_padding, src_seq], 1)
         slf_attn_mask = get_attn_key_pad_mask(seq_k=seq_k, seq_q=seq_k)
 
@@ -269,12 +225,12 @@ class CRNN_Transformer(nn.Module):
                 "To share word embedding table, the vocabulary size of src/tgt shall be the same."
             self.encoder.src_word_emb.weight = self.decoder.tgt_word_emb.weight
 
-    def forward(self, src_seq, src_pos, tgt_seq, tgt_pos, image):
+    def forward(self, src_seq, src_pos, tgt_seq, tgt_pos, image, image_padding):
 
         tgt_seq, tgt_pos = tgt_seq[:, :-1], tgt_pos[:, :-1]
 
-        enc_output, *_ = self.encoder(src_seq, src_pos, image)
-        dec_output, *_ = self.decoder(tgt_seq, tgt_pos, src_seq, enc_output)
+        enc_output, *_ = self.encoder(src_seq, src_pos, image, image_padding)
+        dec_output, *_ = self.decoder(tgt_seq, tgt_pos, src_seq, enc_output, image_padding)
         seq_logit = self.tgt_word_prj(dec_output) * self.x_logit_scale
 
         return seq_logit.view(-1, seq_logit.size(2))

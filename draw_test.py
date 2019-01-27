@@ -36,7 +36,6 @@ if __name__ == '__main__':
     # augmentation (make the image look blurry)
     data_augmentor = CRNNAugmentor(augmentation_config)
     start = time.time()
-    for i in range(64):
-        image = inference("的什么玩意阿斯顿发", '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)
+    for i in range(128):
+        image = inference("的什么玩意阿斯顿阿发斯蒂芬阿斯顿阿斯顿撒旦阿达水电费ad 发撒旦法爱迪生啊阿斯顿发送到是的", '/data/nfsdata/data/sunzijun/CV/more_fonts', data_augmentor)
     print(time.time() - start)
-    image.save('sun11.png')

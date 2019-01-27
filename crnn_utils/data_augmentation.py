@@ -10,8 +10,9 @@
 CRNN, CTPN 数据增强算法
 """
 
-import cv2
 import random
+
+import cv2
 import mahotas
 import numpy as np
 from PIL import Image

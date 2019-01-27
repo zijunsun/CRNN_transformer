@@ -19,19 +19,18 @@ import itertools
 import math
 import random
 import time
-from PIL import Image
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
-import transformer.Constants as Constants
-from dataset import TranslationDataset, paired_collate_fn
-from torch.utils.data import DataLoader, BatchSampler, SequentialSampler
+import CRNN_transformer.transformer.Constants as Constants
+from CRNN_transformer.dataset import TranslationDataset, paired_collate_fn
+from torch.utils.data import BatchSampler, SequentialSampler
 from tqdm import tqdm
-from transformer.Models import CRNN_Transformer
-from transformer.Optim import ScheduledOptim
-from crnn_utils.data_augmentation import CRNNAugmentor,AugmentationConfig
-from crnn_utils.draw_image import inference
+from CRNN_transformer.transformer.Models import CRNN_Transformer
+from CRNN_transformer.transformer.Optim import ScheduledOptim
+from CRNN_transformer.crnn_utils.data_augmentation import CRNNAugmentor, AugmentationConfig
+from CRNN_transformer.crnn_utils.draw_image import inference
 
 
 def generate_augment():
@@ -123,9 +122,12 @@ def train_epoch(model, training_data, optimizer, device, idx2word, smoothing):
             image = loader(image).unsqueeze(0)
             image_all = torch.cat((image_all, image), 0)
 
+        image_all = image_all.to(device)  # iamge tensor
+        image_padding = torch.ones(src_seq.size(0), 76).type(torch.long).to(device)  # image padding
+
         # forward
         optimizer.zero_grad()
-        pred = model(src_seq, src_pos, tgt_seq, tgt_pos, image_all)
+        pred = model(src_seq, src_pos, tgt_seq, tgt_pos, image_all, image_padding)
 
         # backward
         loss, n_correct = cal_performance(pred, gold, smoothing=smoothing)
@@ -176,8 +178,11 @@ def eval_epoch(model, validation_data, device, idx2word):
                 image = loader(image).unsqueeze(0)
                 image_all = torch.cat((image_all, image), 0)
 
+            image_all = image_all.to(device)  # iamge tensor
+            image_padding = torch.ones(src_seq.size(0), 76).type(torch.long).to(device)  # image padding
+
             # forward
-            pred = model(src_seq, src_pos, tgt_seq, tgt_pos, image)
+            pred = model(src_seq, src_pos, tgt_seq, tgt_pos, image_all, image_padding)
             loss, n_correct = cal_performance(pred, gold, smoothing=False)
 
             # note keeping
@@ -193,7 +198,7 @@ def eval_epoch(model, validation_data, device, idx2word):
     return loss_per_word, accuracy
 
 
-def train(model, training_data, validation_data, optimizer, device, opt,idx2word):
+def train(model, training_data, validation_data, optimizer, device, opt, idx2word):
     """训练过程"""
 
     log_train_file = None
@@ -309,7 +314,7 @@ def main():
     parser.add_argument('-data', default='/data/nfsdata/data/sunzijun/transformer/burry4/data.pt')
 
     parser.add_argument('-epoch', type=int, default=10)
-    parser.add_argument('-batch_size', type=int, default=32)
+    parser.add_argument('-batch_size', type=int, default=64)
 
     # parser.add_argument('-d_word_vec', type=int, default=512)
     parser.add_argument('-d_model', type=int, default=512)
@@ -362,7 +367,7 @@ def main():
             'The src/tgt word2idx table are different but asked to share word embedding.'
 
     print(opt)
-    device_ids = [0]
+    device_ids = [1, 3]
     device = torch.device('cuda', device_ids[0])
 
     transformer = CRNN_Transformer(
@@ -380,8 +385,8 @@ def main():
         n_head=opt.n_head,
         dropout=opt.dropout)
 
-    # transformer = transformer.cuda(device_ids[0])
-    transformer = torch.nn.DataParallel(transformer, device_ids=device_ids)
+    transformer = transformer.cuda(device_ids[0])  # 模型载入cuda device 0
+    transformer = torch.nn.DataParallel(transformer, device_ids=device_ids)  # dataParallel重新包装
 
     optimizer = ScheduledOptim(
         optim.Adam(
