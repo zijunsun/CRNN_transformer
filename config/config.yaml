@@ -1,0 +1,27 @@
+
+# 训练参数
+train_paras:
+  data: '/data/nfsdata/data/sunzijun/transformer/burry4/data.pt'
+  log: '/home/sunzijun/data/output/'
+
+  epoch: 10
+  batch_size: 64
+  d_word_vec: 512
+  d_model: 512
+  d_inner_hid: 2048
+  d_k: 64
+  d_v: 64
+  n_head: 8
+  n_layers: 3
+
+  n_warmup_steps: 4000
+  dropout: 0.1
+
+  save_model: 'trained'
+  # all模式存储所有模型， best模式存储最优模型
+  save_mode: 'all'
+
+  embs_share_weight: false
+  proj_share_weight: false
+  no_cuda: false
+  label_smoothing: false
