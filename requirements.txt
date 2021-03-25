@@ -47,4 +47,4 @@ tqdm==4.28.1
 urllib3==1.23
 warpctc-pytorch==0.1
 Werkzeug==0.14.1
-PyYAML==3.13
+PyYAML==5.4
